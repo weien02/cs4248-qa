@@ -2,10 +2,10 @@
 # Submit the whole experiment as a chain of Slurm jobs (each waits for the ones it needs).
 #   bash cluster/pipeline.sh                   # roberta-base everything
 #   MODEL=deberta-v3-base bash cluster/pipeline.sh
-# Watch with: squeue --me ; tail -f logs/*.out
+# Run from the repo root on xlogin. Watch with: squeue --me ; tail -f logs/slurm/*.out
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mkdir -p logs
+mkdir -p logs/slurm
 
 MODEL="${MODEL:-roberta-base}"
 RERANK_ENC="${RERANK_ENC:-roberta-base}"

@@ -28,7 +28,7 @@ scripts/
   run_system.py        baseline / rerank_all / gated / oracle → results/ablations.csv
   make_distractors.py  robustness sets (insert an off-topic sentence)
 cluster/
-  setup_env.sh  check_gpu.sh  job.sbatch  pipeline.sh     (NUS SoC Slurm cluster)
+  setup_env.sh  conda.sh  check_gpu.sh  job.sbatch  pipeline.sh   (NUS SoC Slurm cluster)
 tests/test_core.py
 ```
 
@@ -74,13 +74,52 @@ python scripts/run_system.py --candidates data/candidates/debug_heldout.jsonl \
 
 ## Full run on the NUS SoC cluster
 
+Follows the CS4248 SoC cluster quick-start. Full details (storage, job priority, GPU types): [Unofficial SoC Cluster Guide](https://github.com/isaacNingLee/Unofficial_SoC_Cluster_Guide). Where they differ, the official SoC docs win.
+
+**Rules**
+- Prerequisite: complete the official cluster access steps (SoC account), and configure StuJump if you're off the SoC network.
+- Use a **plain terminal SSH client** only. VS Code Remote-SSH (or any IDE SSH tool) is not allowed.
+- `xlogin` is only for downloading files and submitting jobs. **Install and run things on a compute node.**
+
+**1. Connect**
+
 ```bash
-ssh <soc_id>@xlogin.comp.nus.edu.sg          # SoC VPN if off-campus
+# outside the SoC network (via StuJump)
+ssh -J <soc_username>@stujump.comp.nus.edu.sg <soc_username>@xlogin.comp.nus.edu.sg
+# inside an SoC building
+ssh <soc_username>@xlogin.comp.nus.edu.sg
+```
+
+**2. Get the code** (on xlogin)
+
+```bash
 git clone https://github.com/weien02/cs4248-qa.git && cd cs4248-qa
-bash cluster/setup_env.sh                     # once: conda env + cache model/data
+```
+
+**3. One-time setup on a compute node** (Miniconda, `qa` env, cached model + SQuAD)
+
+```bash
+salloc -t 60                 # reserve a node; may wait until one is free
+srun --pty bash              # prompt changes to the compute-node hostname
+cd ~/cs4248-qa && bash cluster/setup_env.sh
+exit                         # leave the compute-node shell
+exit                         # release the salloc allocation
+```
+
+If you already have conda, `setup_env.sh` reuses it. The script refuses to run on xlogin.
+
+**4. Check a GPU** (from xlogin)
+
+```bash
 srun --gpus=a100-40 --time=00:10:00 bash cluster/check_gpu.sh
-bash cluster/pipeline.sh                      # submits the whole chain
-squeue --me; tail -f logs/*.out
+```
+
+**5. Submit the pipeline** (from xlogin; `sbatch` only queues jobs, so it doesn't need a compute shell)
+
+```bash
+bash cluster/pipeline.sh
+squeue --me                          # PD = pending, R = running
+tail -f logs/slurm/<job-name>-<job-id>.out   # Ctrl+C stops tail, not the job
 ```
 
 `pipeline.sh` submits these jobs, each waiting on the ones it needs:
@@ -90,9 +129,13 @@ squeue --me; tail -f logs/*.out
 3. `dump`: heldout + dev candidates, gating sweep (`results/gating/`)
 4. `rr-hard`, `rr-easy`, `rr-random`: rerankers + system eval on dev
 
-Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4). Each job stays under the default 3 h limit on an A100. Training auto-resumes from the last checkpoint if resubmitted.
+Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
 
-Run any single step yourself with `sbatch cluster/job.sbatch python scripts/<script>.py ...`
+- Each job requests 1× `a100-40` for up to 3 h (see `cluster/job.sbatch`). Change the GPU type or time with `sbatch --gpus=... --time=...`. Check the job priority docs for current limits.
+- Training auto-resumes from the last checkpoint if a job is resubmitted.
+- Jobs run with `HF_HUB_OFFLINE=1`, using the cache from step 3.
+- Run any single step yourself: `sbatch cluster/job.sbatch python scripts/<script>.py ...`
+- Cancel a job: `scancel <job-id>`. Copy results back to your Mac: `rsync -avz -e "ssh -J <soc_username>@stujump.comp.nus.edu.sg" <soc_username>@xlogin.comp.nus.edu.sg:~/cs4248-qa/results ./`
 
 ## Ablations
 

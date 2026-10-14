@@ -1,27 +1,44 @@
 #!/bin/bash
-# One-time setup on the SoC cluster login node (xlogin.comp.nus.edu.sg).
-#   bash cluster/setup_env.sh
+# One-time setup. Run this on a COMPUTE node, not on xlogin
+# (xlogin has very limited resources; conda installs there can fail with CondaMemoryError):
+#
+#   salloc -t 60          # reserve a node (may wait in queue)
+#   srun --pty bash       # shell on the compute node
+#   cd ~/cs4248-qa && bash cluster/setup_env.sh
+#   exit; exit            # leave the node + release the allocation
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
-ENV_NAME=qa
-MINIFORGE="$HOME/miniforge3"
+case "$(hostname)" in
+  xlogin*) echo "You're on $(hostname). Run this inside 'salloc -t 60' + 'srun --pty bash'." >&2; exit 1 ;;
+esac
 
-if [ ! -d "$MINIFORGE" ]; then
-  echo ">> Installing Miniforge to $MINIFORGE"
-  wget -q https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh -O /tmp/miniforge.sh
-  bash /tmp/miniforge.sh -b -p "$MINIFORGE"
+ENV_NAME="${QA_ENV:-qa}"
+CONDA_DIR="$HOME/miniconda3"
+
+# 1. Miniconda (skipped if you already have conda)
+if [ ! -f "$CONDA_DIR/etc/profile.d/conda.sh" ] && [ ! -f "$HOME/miniforge3/etc/profile.d/conda.sh" ]; then
+  echo ">> Installing Miniconda to $CONDA_DIR"
+  (cd "$HOME" && curl -fLO https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh)
+  bash "$HOME/Miniconda3-latest-Linux-x86_64.sh" -b -p "$CONDA_DIR"
+  source "$CONDA_DIR/etc/profile.d/conda.sh"
+  conda init bash >/dev/null
 fi
-source "$MINIFORGE/bin/activate"
+for _d in "$CONDA_DIR" "$HOME/miniforge3"; do
+  [ -f "$_d/etc/profile.d/conda.sh" ] && source "$_d/etc/profile.d/conda.sh" && break
+done
+# newer Miniconda asks you to accept the default channels' terms once
+conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+  --channel https://repo.anaconda.com/pkgs/r >/dev/null 2>&1 || true
 
+# 2. Project env
 if ! conda env list | grep -q "^$ENV_NAME "; then
   conda create -y -n "$ENV_NAME" python=3.11
 fi
 conda activate "$ENV_NAME"
+pip install -r requirements.txt   # Linux torch wheel includes CUDA
 
-cd "$(dirname "$0")/.."
-pip install -r requirements.txt   # default torch wheel on Linux includes CUDA
-
-# cache models + data on the login node so GPU jobs don't need the network
+# 3. Cache model + data so GPU jobs run offline
 export HF_HOME="${HF_HOME:-$HOME/hf_cache}"
 grep -q "HF_HOME" ~/.bashrc || echo "export HF_HOME=$HF_HOME" >> ~/.bashrc
 python - <<'EOF'
@@ -33,6 +50,6 @@ for m in ["roberta-base", "distilbert-base-uncased"]:
 print("cache ready")
 EOF
 
-mkdir -p logs
-echo ">> Done. Sanity-check a GPU with:"
+mkdir -p logs/slurm
+echo ">> Done. Leave the node (exit; exit), then from xlogin check a GPU with:"
 echo "   srun --gpus=a100-40 --time=00:10:00 bash cluster/check_gpu.sh"
