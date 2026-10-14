@@ -1,0 +1,11 @@
+torch>=2.2
+transformers>=4.40
+datasets>=2.18
+accelerate>=0.26
+sentencepiece          # DeBERTa-v3 tokenizer
+protobuf
+numpy
+pandas
+matplotlib
+tqdm
+pytest

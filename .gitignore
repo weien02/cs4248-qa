@@ -1,0 +1,19 @@
+# large / generated
+out/
+data/
+logs/
+hf_cache/
+results/**/predictions_*.json
+results/**/reranker_choice_*.json
+*.pt
+*.bin
+*.safetensors
+
+# env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+.pytest_cache/
