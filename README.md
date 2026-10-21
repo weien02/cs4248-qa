@@ -46,6 +46,10 @@ tests/test_core.py
 
 ## Setup (Mac)
 
+Place the course-provided SQuAD files at `data/train-v1.1.json` and
+`data/dev-v1.1.json`. Named splits use these local files when present and fall
+back to the Hugging Face `rajpurkar/squad` dataset otherwise.
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt

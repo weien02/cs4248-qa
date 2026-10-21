@@ -17,9 +17,45 @@ import random
 from pathlib import Path
 
 SQUAD_HUB_ID = "rajpurkar/squad"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_TRAIN_PATH = PROJECT_ROOT / "data" / "train-v1.1.json"
+LOCAL_DEV_PATH = PROJECT_ROOT / "data" / "dev-v1.1.json"
 SPLIT_SEED = 13
 HELDOUT_FRAC = 0.05
 SPLIT_NAMES = ("train", "train_main", "heldout", "fold0", "fold1", "dev")
+
+
+def _squad_rows(path: str | Path) -> list[dict]:
+    """Flatten an original SQuAD v1.1 JSON file into one row per question."""
+    path = Path(path)
+    payload = json.loads(path.read_text())
+    if "data" not in payload:
+        raise ValueError(f"{path} is not an original SQuAD JSON file (missing 'data')")
+
+    rows = []
+    for article in payload["data"]:
+        title = article.get("title", "")
+        for paragraph in article.get("paragraphs", []):
+            context = paragraph["context"]
+            for qa in paragraph.get("qas", []):
+                answers = qa.get("answers", [])
+                rows.append({
+                    "id": qa["id"],
+                    "title": title,
+                    "context": context,
+                    "question": qa["question"],
+                    "answers": {
+                        "text": [a["text"] for a in answers],
+                        "answer_start": [int(a["answer_start"]) for a in answers],
+                    },
+                })
+    return rows
+
+
+def _load_local_squad(path: str | Path):
+    from datasets import Dataset
+
+    return Dataset.from_list(_squad_rows(path))
 
 
 def _title_groups(train) -> dict[str, list[str]]:
@@ -38,7 +74,12 @@ def _title_groups(train) -> dict[str, list[str]]:
 
 
 def load_split(name: str, max_samples: int | None = None):
-    """Load a named split (see SPLIT_NAMES) or a local .jsonl file as a HF Dataset."""
+    """Load a named split (see SPLIT_NAMES) or a local flat JSON(L) file.
+
+    Named splits prefer data/train-v1.1.json and data/dev-v1.1.json from the
+    repository. If either file is absent, the corresponding split is fetched
+    from Hugging Face as a fallback.
+    """
     from datasets import load_dataset  # lazy: analysis scripts don't need it
 
     if name.endswith(".jsonl") or name.endswith(".json"):
@@ -46,14 +87,17 @@ def load_split(name: str, max_samples: int | None = None):
     else:
         if name not in SPLIT_NAMES:
             raise ValueError(f"Unknown split {name!r}; expected one of {SPLIT_NAMES} or a .jsonl path")
-        squad = load_dataset(SQUAD_HUB_ID)
         if name == "dev":
-            ds = squad["validation"]
-        elif name == "train":
-            ds = squad["train"]
+            ds = (_load_local_squad(LOCAL_DEV_PATH) if LOCAL_DEV_PATH.exists()
+                  else load_dataset(SQUAD_HUB_ID, split="validation"))
         else:
-            keep = set(_title_groups(squad["train"])[name])
-            ds = squad["train"].filter(lambda ex: ex["title"] in keep)
+            train = (_load_local_squad(LOCAL_TRAIN_PATH) if LOCAL_TRAIN_PATH.exists()
+                     else load_dataset(SQUAD_HUB_ID, split="train"))
+            if name == "train":
+                ds = train
+            else:
+                keep = set(_title_groups(train)[name])
+                ds = train.filter(lambda ex: ex["title"] in keep)
     if max_samples:
         ds = ds.select(range(min(max_samples, len(ds))))
     return ds
