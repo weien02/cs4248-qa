@@ -1,4 +1,5 @@
 """Fast tests that need no model download: pytest -q"""
+import json
 import sys
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from qa.confidence import confidence  # noqa: E402
+from qa.data import _squad_rows  # noqa: E402
 from qa.features import extract_candidates  # noqa: E402
 from qa.metrics import f1, normalize_answer, question_type, score_predictions  # noqa: E402
 from qa.text import marked_sentence, sentence_spans  # noqa: E402
@@ -54,3 +56,32 @@ def test_extract_candidates_dedup_and_offsets():
     assert len({(c["start"], c["end"]) for c in out}) == len(out)  # no duplicate spans
     assert all(ctx[c["start"]:c["end"]] == c["text"] for c in out)
     assert all(c["end"] >= c["start"] for c in out)
+
+
+def test_original_squad_json_is_flattened(tmp_path):
+    path = tmp_path / "train-v1.1.json"
+    path.write_text(json.dumps({
+        "version": "1.1",
+        "data": [{
+            "title": "Example",
+            "paragraphs": [{
+                "context": "Paris is in France.",
+                "qas": [{
+                    "id": "q1",
+                    "question": "Where is Paris?",
+                    "answers": [
+                        {"text": "France", "answer_start": 12},
+                        {"text": "France", "answer_start": 12},
+                    ],
+                }],
+            }],
+        }],
+    }))
+
+    assert _squad_rows(path) == [{
+        "id": "q1",
+        "title": "Example",
+        "context": "Paris is in France.",
+        "question": "Where is Paris?",
+        "answers": {"text": ["France", "France"], "answer_start": [12, 12]},
+    }]
