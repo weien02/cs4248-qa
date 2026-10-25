@@ -27,8 +27,11 @@ scripts/
   train_reranker.py    train reranker on cross-fitted candidates
   run_system.py        baseline / rerank_all / gated / oracle → results/ablations.csv
   make_distractors.py  robustness sets (insert an off-topic sentence)
+  get_adversarial.py   download Adversarial SQuAD (AddSent / AddOneSent) as JSONL
+  robustness_report.py score drop + distractor capture rate across robustness sets
+  error_analysis.py    error types, gate quality, per-type/length/confidence breakdowns, examples
 cluster/
-  setup_env.sh  conda.sh  check_gpu.sh  job.sbatch  pipeline.sh   (NUS SoC Slurm cluster)
+  setup_env.sh  conda.sh  check_gpu.sh  job.sbatch  pipeline.sh  robustness.sh   (NUS SoC Slurm cluster)
 tests/test_core.py
 ```
 
@@ -158,6 +161,24 @@ Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
 `metrics_<tag>.json` also has per-question-type EM/F1 and wrong→right / right→wrong flip counts.
 
 ## Robustness (distractors)
+
+After `pipeline.sh` has finished, everything below runs as one job:
+
+```bash
+python scripts/get_adversarial.py                        # once, on xlogin (needs internet)
+sbatch cluster/job.sbatch bash cluster/robustness.sh     # 6 distractor sets + AddSent/AddOneSent
+```
+
+This builds {random, overlap} × {start, random, end} distractor versions of dev, generates candidates for each set and for Adversarial SQuAD, runs every reranker with τ from the clean heldout set, and writes `results/robustness/robustness_summary.{md,csv}` and `robustness_drop.png`. These report the EM/F1 drop compared with the same questions on clean dev, how many questions get sent to the reranker, and the **capture rate**: the share of predictions that land inside the inserted sentence. Adversarial SQuAD uses the official worst-case-per-question protocol. The script header also has a local smoke-test command.
+
+Error analysis on clean dev (error types, whether the gate catches errors the reranker can fix, breakdowns by question type, answer length and confidence, and examples):
+
+```bash
+python scripts/error_analysis.py --candidates data/candidates/dev.jsonl --results_dir results/dev \
+  --tag hard --tau_from data/candidates/heldout.jsonl --gate_frac 0.2   # → results/error_analysis/hard/
+```
+
+Individual steps, if you need them:
 
 ```bash
 python scripts/make_distractors.py --split dev --mode overlap --position random \

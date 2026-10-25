@@ -6,8 +6,10 @@ Splits are made by *article title* so no passage appears in two splits.
                    ->  train_main (rest)  ->  fold0 / fold1 (for cross-fitted hard negatives)
     dev            =  official SQuAD v1.1 validation set (final numbers only)
 
-Any split name ending in .jsonl is loaded as a local SQuAD-format file
-(e.g. a distractor-augmented dev set from scripts/make_distractors.py).
+Any split name ending in .jsonl is loaded as a local flat file, one question per line
+(e.g. a distractor-augmented dev set from scripts/make_distractors.py). A .json file in
+the original nested SQuAD format (e.g. Adversarial SQuAD AddSent / AddOneSent) is
+flattened the same way as the official train/dev files.
 """
 from __future__ import annotations
 
@@ -52,6 +54,12 @@ def _squad_rows(path: str | Path) -> list[dict]:
     return rows
 
 
+def _is_squad_json(path: str | Path) -> bool:
+    with Path(path).open() as f:
+        head = f.read(4096).lstrip()
+    return head.startswith("{") and '"data"' in head and '"paragraphs"' in head
+
+
 def _load_local_squad(path: str | Path):
     from datasets import Dataset
 
@@ -82,7 +90,9 @@ def load_split(name: str, max_samples: int | None = None):
     """
     from datasets import load_dataset  # lazy: analysis scripts don't need it
 
-    if name.endswith(".jsonl") or name.endswith(".json"):
+    if name.endswith(".json") and _is_squad_json(name):
+        ds = _load_local_squad(name)  # nested SQuAD format, e.g. Adversarial SQuAD AddSent
+    elif name.endswith(".jsonl") or name.endswith(".json"):
         ds = load_dataset("json", data_files=name, split="train")
     else:
         if name not in SPLIT_NAMES:

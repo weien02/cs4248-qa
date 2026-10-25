@@ -52,11 +52,13 @@ def main():
     args = p.parse_args()
     rng = random.Random(args.seed)
 
-    ds = load_split(args.split, args.max_samples)
+    full = load_split(args.split)
+    ds = full.select(range(min(args.max_samples, len(full)))) if args.max_samples else full
 
-    # sentence pool from all distinct passages
+    # sentence pool from all distinct passages of the whole split (not just the first
+    # max_samples questions, which may all come from one article)
     pool, seen = [], set()
-    for ex in ds:
+    for ex in full:
         if ex["context"] in seen:
             continue
         seen.add(ex["context"])
