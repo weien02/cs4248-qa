@@ -44,6 +44,7 @@ def main():
     p.add_argument("--kind", choices=MARGIN_KINDS, default="prob_margin")
     p.add_argument("--tag", default="run", help="label for this configuration in ablations.csv")
     p.add_argument("--out_dir", default="results/dev")
+    p.add_argument("--ablations_csv", default="results/ablations.csv", help="summary CSV to append to")
     p.add_argument("--batch_size", type=int, default=32)
     p.add_argument("--max_length", type=int, default=192)
     p.add_argument("--bf16", action="store_true")
@@ -87,7 +88,7 @@ def main():
         preds["gated"] = {qid: (rr[qid] if qid in gated_ids else preds["baseline"][qid]) for qid in golds}
 
     base_ok = {qid: max_over_gold(exact_match, preds["baseline"][qid], g) for qid, g in golds.items()}
-    results, abl_path = {}, Path("results/ablations.csv")
+    results, abl_path = {}, Path(args.ablations_csv)
     new_file = not abl_path.exists()
     abl_path.parent.mkdir(parents=True, exist_ok=True)
     with abl_path.open("a", newline="") as f:
