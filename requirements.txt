@@ -1,9 +1,5 @@
 torch>=2.2
-# The training scripts use the Transformers v4 TrainingArguments API
-# (notably warmup_ratio). Transformers v5 removed/changed this argument.
 transformers>=4.40,<5
-# Datasets v4+ expects newer huggingface-hub APIs that conflict with
-# Transformers v4's huggingface-hub<1 requirement.
 datasets>=2.18,<4
 accelerate>=0.26
 sentencepiece          # DeBERTa-v3 tokenizer
