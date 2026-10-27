@@ -15,6 +15,15 @@ Reads the candidates from dump_candidates.py and the predictions run_system.py s
                      baseline, gated, rerank_all and oracle_gated, with wrong->right and
                      right->wrong flips of the gated system
   calibration.png    baseline EM and reranker gain per confidence decile
+  flips.csv          gated system's wrong->right / right->wrong flips: was the wrong side a
+                     near-miss (overlaps the gold answer) or an unrelated span?
+  negatives.csv      are the reranker's training negatives really wrong? Training data has one
+                     reference answer per question, so a candidate can be labelled negative while
+                     a second annotator would accept it. On dev (several references) this
+                     relabels with the FIRST reference only, as training does, and counts top-k
+                     ("hard") and rank k..n_best ("easy") negatives that match ANOTHER reference.
+                     --train_candidates adds the same overlap breakdown for the real training
+                     candidates (fold0/fold1), where only one reference exists.
 
 Example
 -------
@@ -37,10 +46,11 @@ import numpy as np  # noqa: E402
 
 from qa.confidence import MARGIN_KINDS, confidence  # noqa: E402
 from qa.data import read_jsonl  # noqa: E402
-from qa.metrics import exact_match, f1, max_over_gold, question_type  # noqa: E402
+from qa.metrics import exact_match, f1, max_over_gold, normalize_answer, question_type  # noqa: E402
 
 MODES = ("baseline", "gated", "rerank_all", "oracle_gated")
 ERROR_TYPES = ("correct", "boundary", "ranking", "recall_k", "recall_all")
+NEG_TYPES = ("matches_other_ref", "contains_gold", "inside_gold", "partial_overlap", "no_overlap")
 
 
 def error_type(row, pred, k):
@@ -51,6 +61,38 @@ def error_type(row, pred, k):
     if 0 <= row["gold_rank"] < k:
         return "ranking"
     return "recall_k" if row["gold_rank"] >= k else "recall_all"
+
+
+def negative_type(text, ref, other_refs):
+    """How a candidate labelled negative (not an exact match of ref) relates to the answer."""
+    if any(exact_match(text, o) for o in other_refs):
+        return "matches_other_ref"
+    t, g = normalize_answer(text), normalize_answer(ref)
+    if g and g in t:
+        return "contains_gold"
+    if t and t in g:
+        return "inside_gold"
+    return "partial_overlap" if f1(text, ref) > 0 else "no_overlap"
+
+
+def negative_audit(rows, k):
+    """Label negatives the way build_group() does, against the first reference only.
+
+    Questions whose first reference isn't in the top-k are skipped, as in training.
+    Returns {"hard": Counter, "easy": Counter} of negative_type over all negatives.
+    """
+    counts = {"hard": Counter(), "easy": Counter()}
+    for r in rows:
+        if not r["answers"]:
+            continue
+        ref, others = r["answers"][0], r["answers"][1:]
+        cands = r["candidates"]
+        if not any(exact_match(c["text"], ref) for c in cands[:k]):
+            continue
+        for i, c in enumerate(cands):
+            if not exact_match(c["text"], ref):
+                counts["hard" if i < k else "easy"][negative_type(c["text"], ref, others)] += 1
+    return counts
 
 
 def length_bucket(row):
@@ -83,6 +125,8 @@ def main():
     p.add_argument("--gate_frac", type=float, default=0.2)
     p.add_argument("--n_examples", type=int, default=10, help="examples per category in summary.md")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--train_candidates", nargs="*", default=[],
+                   help="reranker training candidates (fold0/fold1.jsonl) for the negatives audit")
     p.add_argument("--out_dir", help="default: results/error_analysis/<tag>")
     args = p.parse_args()
     out = Path(args.out_dir or f"results/error_analysis/{args.tag}")
@@ -110,6 +154,7 @@ def main():
     ok = {m: {r["id"]: max_over_gold(exact_match, pr.get(r["id"], ""), r["answers"]) for r in rows}
           for m, pr in preds.items()}
     n = len(rows)
+    by_id = {r["id"]: r for r in rows}
     md = [f"# Error analysis: `{args.tag}` on `{Path(args.candidates).name}`",
           f"{n} questions, k={args.k}, {args.kind} tau={args.tau:.4f}, "
           f"{100 * len(gated) / n:.1f}% sent to the reranker.\n"]
@@ -167,7 +212,41 @@ def main():
            md_table(length), "", "## By baseline confidence decile (1 = least confident)",
            md_table(decile), ""]
 
-    # 4. calibration plot: where does reranking help?
+    # 4. what kind of answers do the flips swap?
+    flip_rows = []
+    for flip, cond, wrong_mode in (
+            ("wrong_to_right", lambda q: ok["gated"][q] and not ok["baseline"][q], "baseline"),
+            ("right_to_wrong", lambda q: ok["baseline"][q] and not ok["gated"][q], "gated")):
+        ids = [r["id"] for r in rows if cond(r["id"])]
+        kinds = Counter("near_miss" if max_over_gold(f1, preds[wrong_mode][q], by_id[q]["answers"]) > 0
+                        else "unrelated" for q in ids)
+        flip_rows.append({"flip": flip, "n": len(ids), "wrong_side": wrong_mode,
+                          "near_miss": kinds["near_miss"], "unrelated": kinds["unrelated"],
+                          "pct_near_miss": f"{100 * kinds['near_miss'] / max(len(ids), 1):.1f}"})
+    write_csv(out / "flips.csv", flip_rows)
+    md += ["## What do the reranker's flips swap? (gated system)", md_table(flip_rows),
+           "`near_miss`: the wrong answer overlaps a reference (span boundary off). "
+           "`unrelated`: no overlap.\n"]
+
+    # 5. are the training negatives really wrong?
+    neg_rows = []
+    sources = [(Path(args.candidates).name + " (first ref only)", rows)]
+    if args.train_candidates:
+        sources.append(("+".join(Path(f).name for f in args.train_candidates),
+                        [r for f in args.train_candidates for r in read_jsonl(f)]))
+    for name, src in sources:
+        for kind, c in negative_audit(src, args.k).items():
+            total = sum(c.values())
+            neg_rows.append({"source": name, "negatives": f"{kind} ({'top-k' if kind == 'hard' else 'rank k+'})",
+                             "n": total, **{t: f"{100 * c[t] / max(total, 1):.1f}" for t in NEG_TYPES}})
+    write_csv(out / "negatives.csv", neg_rows)
+    md += ["## Are the reranker's training negatives really wrong? (% of negatives)", md_table(neg_rows),
+           "Negatives are labelled as in training: not an exact match of ONE reference answer. "
+           "`matches_other_ref` = another annotator gave exactly this answer (a false negative; only "
+           "measurable on dev). `contains_gold` / `inside_gold` = a longer / shorter span around the "
+           "answer, often also acceptable.\n"]
+
+    # 6. calibration plot: where does reranking help?
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -188,9 +267,8 @@ def main():
     except ImportError:
         pass
 
-    # 5. examples
+    # 7. examples
     rng = random.Random(args.seed)
-    by_id = {r["id"]: r for r in rows}
     cats = {
         "Fixed by the reranker (wrong -> right)":
             [q for q in gated if ok["gated"][q] and not ok["baseline"][q]],
@@ -218,7 +296,9 @@ def main():
     (out / "summary.md").write_text("\n".join(md) + "\n")
     print("\n".join(md[:2]))
     print(md_table(et_rows))
-    print(f"\nWrote {out}/summary.md, error_types.csv, gating.csv, by_*.csv, calibration.png")
+    print(md_table(neg_rows))
+    print(f"\nWrote {out}/summary.md, error_types.csv, gating.csv, by_*.csv, flips.csv, "
+          f"negatives.csv, calibration.png")
 
 
 if __name__ == "__main__":
