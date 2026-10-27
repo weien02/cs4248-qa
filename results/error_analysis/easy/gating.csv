@@ -1,0 +1,6 @@
+baseline_outcome,n,gated,pct_gated,gated_and_correct_after
+correct,9068,1270,14.0,1089
+boundary,1081,544,50.3,235
+ranking,189,67,35.4,33
+recall_k,135,43,31.9,0
+recall_all,97,40,41.2,0

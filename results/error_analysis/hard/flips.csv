@@ -1,0 +1,3 @@
+flip,n,wrong_side,near_miss,unrelated,pct_near_miss
+wrong_to_right,274,baseline,241,33,88.0
+right_to_wrong,172,gated,138,34,80.2
