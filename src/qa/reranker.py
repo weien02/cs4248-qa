@@ -166,7 +166,11 @@ def collate(groups: list[Group], tokenizer, max_length: int = 192) -> dict:
         mask.append([True] * n + [False] * (K - n))
         scores.append(g.rel_scores + [0.0] * (K - n))
         labels.append(g.label)
-    enc = tokenizer(firsts, seconds, truncation="only_second", max_length=max_length,
+    # Usually the candidate/sentence side is the longer sequence, but a few
+    # SQuAD questions are long enough that truncating only the second sequence
+    # cannot satisfy max_length. Longest-first handles those outliers while
+    # retaining as much of both sides as possible.
+    enc = tokenizer(firsts, seconds, truncation="longest_first", max_length=max_length,
                     padding=True, return_tensors="pt")
     batch = dict(enc)
     batch["group_mask"] = torch.tensor(mask)
