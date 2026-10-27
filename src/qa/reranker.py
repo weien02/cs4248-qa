@@ -99,7 +99,8 @@ def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | 
         label = chosen.index(pos)
 
     return Group(
-        # strip like features._questions: one train question has ~25k leading spaces
+        # SQuAD contains a question with a very large amount of leading
+        # whitespace that otherwise dominates tokenisation.
         qid=row["id"], question=row["question"].strip(),
         texts=[c["text"] for c in chosen],
         sentences=[marked_sentence(ctx, c["start"], c["end"], spans) for c in chosen],
@@ -167,8 +168,10 @@ def collate(groups: list[Group], tokenizer, max_length: int = 192) -> dict:
         mask.append([True] * n + [False] * (K - n))
         scores.append(g.rel_scores + [0.0] * (K - n))
         labels.append(g.label)
-    # longest_first == only_second whenever the question is the shorter part (always, in
-    # practice), but doesn't crash if a question alone nearly fills max_length
+    # Usually the candidate/sentence side is the longer sequence, but a few
+    # SQuAD questions are long enough that truncating only the second sequence
+    # cannot satisfy max_length. Longest-first handles those outliers while
+    # retaining as much of both sides as possible.
     enc = tokenizer(firsts, seconds, truncation="longest_first", max_length=max_length,
                     padding=True, return_tensors="pt")
     batch = dict(enc)
