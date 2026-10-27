@@ -1,5 +1,7 @@
 # CS4248 G11: Confidence-Gated Span Reranking for Extractive QA
 
+> **Status, results and open to-dos: [`report/STATUS.md`](report/STATUS.md).** Robustness and error analysis write-up: [`report/robustness_error_analysis.md`](report/robustness_error_analysis.md).
+
 SQuAD v1.1. The baseline transformer predicts answer start/end. We keep the top-k spans and, **only when the baseline is uncertain**, let a second-stage reranker choose among them. The reranker is trained on hard negatives mined from the baseline's own high-scoring errors.
 
 ```
@@ -176,7 +178,14 @@ Error analysis on clean dev (error types, whether the gate catches errors the re
 
 ```bash
 python scripts/error_analysis.py --candidates data/candidates/dev.jsonl --results_dir results/dev \
-  --tag hard --tau_from data/candidates/heldout.jsonl --gate_frac 0.2   # → results/error_analysis/hard/
+  --tag hard --tau_from data/candidates/heldout.jsonl --gate_frac 0.2 \
+  --train_candidates data/candidates/fold0.jsonl data/candidates/fold1.jsonl   # → results/error_analysis/hard/
+```
+
+To check whether the confidence gate notices answers taken from the inserted sentence, pass the τ from `results/robustness/runs.csv`:
+
+```bash
+python scripts/robustness_report.py --tau 0.16746135687313898    # → results/robustness/gate_vs_capture.md
 ```
 
 Individual steps, if you need them:

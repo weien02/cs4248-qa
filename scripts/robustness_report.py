@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from qa.confidence import MARGIN_KINDS, confidence  # noqa: E402
 from qa.data import read_jsonl  # noqa: E402
 from qa.metrics import exact_match, f1, max_over_gold  # noqa: E402
 
@@ -73,6 +74,11 @@ def main():
     p.add_argument("--candidates_dir", default="data/candidates/robustness")
     p.add_argument("--results_dir", default="results/robustness")
     p.add_argument("--out_dir", help="default: --results_dir")
+    p.add_argument("--tau", type=float,
+                   help="gating threshold used by run_system.py (its runs.csv 'tau' column); adds "
+                        "gate_vs_capture.md: does the gate route the fooled questions to the reranker?")
+    p.add_argument("--k", type=int, default=5)
+    p.add_argument("--kind", choices=MARGIN_KINDS, default="prob_margin")
     args = p.parse_args()
     res, out = Path(args.results_dir), Path(args.out_dir or args.results_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -88,7 +94,7 @@ def main():
         sys.exit(f"no clean_<neg> run in {res}; robustness.sh runs one on dev")
     clean_rows = {r["id"]: r for r in read_jsonl(Path(args.candidates_dir) / "clean.jsonl")}
 
-    table = []
+    table, gate_rows = [], []
     for s in sets:
         rows = read_jsonl(Path(args.candidates_dir) / f"{s}.jsonl")
         adversarial = s in ADVERSARIAL
@@ -99,6 +105,23 @@ def main():
             orig_ctx = {}
             originals = [clean_rows[r["id"]] for r in rows if r["id"] in clean_rows]
         attacked = [r for r in rows if distractor_span(r, orig_ctx.get(r["id"].split("-")[0]))]
+
+        base = load_preds(f"{s}_{negs[0]}", "baseline")
+        if args.tau is not None and base is not None:
+            # baseline answers on attacked passages: fooled (inside the distractor) vs correct
+            fooled, right = [], []
+            for r in attacked:
+                sp = pred_span(r, base.get(r["id"], ""))
+                d = distractor_span(r, orig_ctx.get(r["id"].split("-")[0]))
+                gated = confidence(r["candidates"], args.k, args.kind) < args.tau
+                if sp and sp[0] < d[1] and d[0] < sp[1]:
+                    fooled.append(gated)
+                elif max_over_gold(exact_match, base.get(r["id"], ""), r["answers"]):
+                    right.append(gated)
+            pct = lambda xs: round(100 * sum(xs) / max(len(xs), 1), 1)  # noqa: E731
+            gate_rows.append({"set": s, "attacked": len(attacked), "fooled": len(fooled),
+                              "pct_fooled_gated": pct(fooled), "correct": len(right),
+                              "pct_correct_gated": pct(right)})
 
         for mode, needs_rr in MODES:
             for neg in (negs if needs_rr else negs[:1]):
@@ -142,6 +165,17 @@ def main():
     (out / "robustness_summary.md").write_text("\n".join(md) + "\n")
     print("\n".join(md))
     print(f"\nSaved {out / 'robustness_summary.csv'} and .md")
+
+    if gate_rows:
+        cols = list(gate_rows[0])
+        md = ["| " + " | ".join(cols) + " |", "|" + "---|" * len(cols)]
+        md += ["| " + " | ".join(str(t[c]) for c in cols) + " |" for t in gate_rows]
+        (out / "gate_vs_capture.md").write_text(
+            f"Baseline answers on attacked passages, tau={args.tau} ({args.kind}, k={args.k}). "
+            "fooled = answer lies inside the inserted sentence; gated = would be sent to the reranker.\n\n"
+            + "\n".join(md) + "\n")
+        print("\n" + "\n".join(md))
+        print(f"Saved {out / 'gate_vs_capture.md'}")
 
     try:
         import matplotlib

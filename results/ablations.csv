@@ -11,3 +11,7 @@ random,dev.jsonl,baseline,5,prob_margin,0.16746135687313898,0.0,85.79,92.08,0.0,
 random,dev.jsonl,oracle_gated,5,prob_margin,0.16746135687313898,18.6,90.69,94.19,518.0,0.0
 random,dev.jsonl,rerank_all,5,prob_margin,0.16746135687313898,100.0,57.43,76.16,345.0,3343.0
 random,dev.jsonl,gated,5,prob_margin,0.16746135687313898,18.6,82.90,90.52,179.0,484.0
+hardsoft,dev.jsonl,baseline,5,prob_margin,0.16746135687313898,0.0,85.79,92.08,0.0,0.0
+hardsoft,dev.jsonl,oracle_gated,5,prob_margin,0.16746135687313898,18.6,90.69,94.19,518.0,0.0
+hardsoft,dev.jsonl,rerank_all,5,prob_margin,0.16746135687313898,100.0,84.40,91.23,440.0,587.0
+hardsoft,dev.jsonl,gated,5,prob_margin,0.16746135687313898,18.6,86.31,92.16,249.0,194.0
