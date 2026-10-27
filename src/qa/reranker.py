@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
 
-from .metrics import exact_match, max_over_gold
+from .metrics import exact_match, f1, max_over_gold
 from .text import marked_sentence, sentence_spans
 
 NEG_MODES = ("hard", "easy", "random")
@@ -34,6 +34,7 @@ class Group:
     sentences: list[str]      # marked context sentence per candidate
     rel_scores: list[float]   # baseline score minus top-1 score
     label: int                # index of gold candidate (-1 at inference / unknown)
+    targets: list[float] | None = None  # soft target distribution (build_group soft_power)
 
 
 def _random_span(context: str, golds: list[str], rng: random.Random, max_words=6):
@@ -48,7 +49,8 @@ def _random_span(context: str, golds: list[str], rng: random.Random, max_words=6
 
 
 def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | None = None,
-                train: bool = True, inject_gold: bool = False) -> Group | None:
+                train: bool = True, inject_gold: bool = False,
+                soft_power: float | None = None) -> Group | None:
     """Turn one candidates.jsonl row into a reranking group.
 
     Training negatives (neg_mode):
@@ -56,6 +58,10 @@ def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | 
       easy   - candidates sampled from baseline ranks k..n_best (low-scoring)
       random - random passage spans, given the lowest n-best score as their score
     At inference (train=False) the group is simply the top-k candidates.
+
+    soft_power: if set, also attach soft targets: weight F1(candidate, gold) ** soft_power,
+    1 for the gold candidate, normalised. Train questions have ONE reference answer, so
+    near-miss spans (often acceptable to another annotator) are otherwise pure negatives.
     """
     rng = rng or random.Random(0)
     ctx, cands, golds = row["context"], row["candidates"], row["answers"]
@@ -98,6 +104,12 @@ def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | 
         rng.shuffle(chosen)
         label = chosen.index(pos)
 
+    targets = None
+    if soft_power is not None and label >= 0:
+        w = [1.0 if i == label else max_over_gold(f1, c["text"], golds) ** soft_power
+             for i, c in enumerate(chosen)]
+        targets = [x / sum(w) for x in w]
+
     return Group(
         # SQuAD contains a question with a very large amount of leading
         # whitespace that otherwise dominates tokenisation.
@@ -106,6 +118,7 @@ def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | 
         sentences=[marked_sentence(ctx, c["start"], c["end"], spans) for c in chosen],
         rel_scores=[c["score"] - top for c in chosen],
         label=label,
+        targets=targets,
     )
 
 
@@ -158,7 +171,7 @@ class SpanReranker(nn.Module):
 def collate(groups: list[Group], tokenizer, max_length: int = 192) -> dict:
     K = max(len(g.texts) for g in groups)
     sep = f" {tokenizer.sep_token} " if tokenizer.sep_token else " | "
-    firsts, seconds, mask, scores, labels = [], [], [], [], []
+    firsts, seconds, mask, scores, labels, targets = [], [], [], [], [], []
     for g in groups:
         n = len(g.texts)
         for i in range(K):
@@ -168,6 +181,8 @@ def collate(groups: list[Group], tokenizer, max_length: int = 192) -> dict:
         mask.append([True] * n + [False] * (K - n))
         scores.append(g.rel_scores + [0.0] * (K - n))
         labels.append(g.label)
+        t = g.targets or [float(i == g.label) for i in range(n)]  # one-hot unless soft
+        targets.append(t + [0.0] * (K - n))
     # Usually the candidate/sentence side is the longer sequence, but a few
     # SQuAD questions are long enough that truncating only the second sequence
     # cannot satisfy max_length. Longest-first handles those outliers while
@@ -178,6 +193,7 @@ def collate(groups: list[Group], tokenizer, max_length: int = 192) -> dict:
     batch["group_mask"] = torch.tensor(mask)
     batch["rel_scores"] = torch.tensor(scores, dtype=torch.float)
     batch["labels"] = torch.tensor(labels)
+    batch["targets"] = torch.tensor(targets, dtype=torch.float)
     return batch
 
 
@@ -190,6 +206,7 @@ def score_groups(model, tokenizer, groups, device, batch_size=16, max_length=192
         chunk = groups[i:i + batch_size]
         b = collate(chunk, tokenizer, max_length)
         b.pop("labels")
+        b.pop("targets")
         b = {k: v.to(device) for k, v in b.items()}
         if amp_dtype is not None and device.type == "cuda":
             with torch.autocast("cuda", dtype=amp_dtype):

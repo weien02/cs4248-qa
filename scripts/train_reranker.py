@@ -45,6 +45,10 @@ def parse_args():
     p.add_argument("--no_score", action="store_true", help="drop the baseline-score feature")
     p.add_argument("--inject_gold", action="store_true",
                    help="if gold is not in top-k, add it as the positive instead of skipping")
+    p.add_argument("--soft_labels", action="store_true",
+                   help="train on soft targets F1(candidate, gold)**soft_power instead of the "
+                        "single exact match (near-miss spans are often valid answers)")
+    p.add_argument("--soft_power", type=float, default=2.0)
     p.add_argument("--epochs", type=int, default=2)
     p.add_argument("--batch_size", type=int, default=8, help="questions per batch (x k sequences)")
     p.add_argument("--grad_accum", type=int, default=1)
@@ -87,7 +91,8 @@ def main():
     amp = torch.bfloat16 if args.bf16 else (torch.float16 if args.fp16 else None)
 
     rows = [r for f in args.train_candidates for r in read_jsonl(f)]
-    groups = [build_group(r, args.k, args.neg_mode, rng, train=True, inject_gold=args.inject_gold)
+    groups = [build_group(r, args.k, args.neg_mode, rng, train=True, inject_gold=args.inject_gold,
+                          soft_power=args.soft_power if args.soft_labels else None)
               for r in rows]
     skipped = sum(g is None for g in groups)
     groups = [g for g in groups if g is not None]
@@ -118,11 +123,17 @@ def main():
             chunk = groups[bi * args.batch_size:(bi + 1) * args.batch_size]
             b = {k: v.to(device) for k, v in collate(chunk, tok, args.max_length).items()}
             labels = b.pop("labels")
+            targets = b.pop("targets")
             ctx = (torch.autocast("cuda", dtype=amp) if amp is not None and device.type == "cuda"
                    else contextlib.nullcontext())
             with ctx:
                 logits = model(**b)
-            loss = F.cross_entropy(logits, labels) / args.grad_accum
+            if args.soft_labels:
+                # padded slots have logit -inf and target 0; zero them so 0 * -inf isn't NaN
+                logp = F.log_softmax(logits, dim=-1).masked_fill(~b["group_mask"], 0.0)
+                loss = -(targets * logp).sum(-1).mean() / args.grad_accum
+            else:
+                loss = F.cross_entropy(logits, labels) / args.grad_accum
             scaler.scale(loss).backward()
             if (bi + 1) % args.grad_accum == 0 or bi + 1 == n_batches:
                 scaler.unscale_(opt)

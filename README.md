@@ -156,6 +156,7 @@ Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
 | Without hard negatives | `tag=easy` / `tag=random`, `mode=gated` |
 | Upper bound | `mode=oracle_gated` |
 | Score feature removed | retrain with `--no_score` |
+| Soft labels (partial credit for near-miss spans) | retrain with `--soft_labels`; see `negatives.csv` in the error analysis for why |
 | Gating threshold | `results/gating/gating_sweep.csv`, or rerun `run_system.py` with other `--gate_frac` |
 
 `metrics_<tag>.json` also has per-question-type EM/F1 and wrong→right / right→wrong flip counts.
