@@ -99,7 +99,9 @@ def build_group(row: dict, k: int, neg_mode: str = "hard", rng: random.Random | 
         label = chosen.index(pos)
 
     return Group(
-        qid=row["id"], question=row["question"],
+        # SQuAD contains a question with a very large amount of leading
+        # whitespace that otherwise dominates tokenisation.
+        qid=row["id"], question=row["question"].strip(),
         texts=[c["text"] for c in chosen],
         sentences=[marked_sentence(ctx, c["start"], c["end"], spans) for c in chosen],
         rel_scores=[c["score"] - top for c in chosen],
