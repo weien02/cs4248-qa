@@ -85,3 +85,36 @@ def test_original_squad_json_is_flattened(tmp_path):
         "question": "Where is Paris?",
         "answers": {"text": ["France", "France"], "answer_start": [12, 12]},
     }]
+
+
+def test_reranker_soft_targets():
+    import random
+
+    import torch
+    import torch.nn.functional as F
+
+    from qa.reranker import build_group
+
+    ctx = "The game was played at Levi's Stadium in Santa Clara. It rained."
+    def cand(text, score):
+        s = ctx.index(text)
+        return {"text": text, "start": s, "end": s + len(text), "score": score}
+    row = {"id": "q", "question": "  Where was the game?", "context": ctx, "answers": ["Levi's Stadium"],
+           "candidates": [cand("Levi's Stadium in Santa Clara", 5.0), cand("Levi's Stadium", 4.9),
+                          cand("Santa Clara", 4.0), cand("It rained", 1.0)]}
+
+    g = build_group(row, 4, "hard", random.Random(0), soft_power=2.0)
+    assert g.question == "Where was the game?"
+    w = dict(zip(g.texts, g.targets))
+    assert abs(sum(g.targets) - 1) < 1e-6
+    assert w["Levi's Stadium"] == max(g.targets)
+    assert 0 < w["Levi's Stadium in Santa Clara"] < w["Levi's Stadium"]   # near-miss: partial credit
+    assert w["Santa Clara"] == w["It rained"] == 0                        # no overlap: none
+    assert build_group(row, 4, "hard", random.Random(0)).targets is None  # default: exact labels
+
+    # soft loss on one-hot targets == cross-entropy, and padding (-inf, target 0) gives no NaN
+    logits = torch.tensor([[2.0, 0.5, -1.0, float("-inf")]])
+    mask = torch.tensor([[True, True, True, False]])
+    onehot = torch.tensor([[0.0, 1.0, 0.0, 0.0]])
+    soft = -(onehot * F.log_softmax(logits, -1).masked_fill(~mask, 0.0)).sum(-1).mean()
+    assert torch.isfinite(soft) and torch.isclose(soft, F.cross_entropy(logits, torch.tensor([1])))

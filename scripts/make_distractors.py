@@ -52,11 +52,13 @@ def main():
     args = p.parse_args()
     rng = random.Random(args.seed)
 
-    ds = load_split(args.split, args.max_samples)
+    full = load_split(args.split)
+    ds = full.select(range(min(args.max_samples, len(full)))) if args.max_samples else full
 
-    # sentence pool from all distinct passages
+    # sentence pool from all distinct passages of the whole split (not just the first
+    # max_samples questions, which may all come from one article)
     pool, seen = [], set()
-    for ex in ds:
+    for ex in full:
         if ex["context"] in seen:
             continue
         seen.add(ex["context"])
@@ -104,7 +106,11 @@ def main():
         sent = pool[choice][1]
 
         ctx = ex["context"]
-        bounds = [0] + [e for _, e in sentence_spans(ctx)]
+        # never insert inside a gold answer: some answers span a sentence boundary
+        # (e.g. ". Jim Gray" starts at the full stop that ends the previous sentence)
+        answers = list(zip(ex["answers"]["answer_start"], ex["answers"]["text"]))
+        bounds = [b for b in [0] + [e for _, e in sentence_spans(ctx)]
+                  if not any(s < b < s + len(t) for s, t in answers)]
         at = {"end": len(ctx), "start": 0, "random": rng.choice(bounds)}[args.position]
         if at == 0:
             new_ctx, shift = sent + " " + ctx, len(sent) + 1

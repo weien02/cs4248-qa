@@ -1,0 +1,6 @@
+error_type,baseline,gated,rerank_all
+correct,85.79,82.90,57.43
+boundary,10.23,12.94,37.48
+ranking,1.79,2.12,3.44
+recall_k,1.28,1.14,0.83
+recall_all,0.92,0.89,0.81

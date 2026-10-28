@@ -1,5 +1,7 @@
 # CS4248 G11: Confidence-Gated Span Reranking for Extractive QA
 
+> **Status, results and open to-dos: [`report/STATUS.md`](report/STATUS.md).** Robustness and error analysis write-up: [`report/robustness_error_analysis.md`](report/robustness_error_analysis.md).
+
 SQuAD v1.1. The baseline transformer predicts answer start/end. We keep the top-k spans and, **only when the baseline is uncertain**, let a second-stage reranker choose among them. The reranker is trained on hard negatives mined from the baseline's own high-scoring errors.
 
 ```
@@ -27,8 +29,11 @@ scripts/
   train_reranker.py    train reranker on cross-fitted candidates
   run_system.py        baseline / rerank_all / gated / oracle → results/ablations.csv
   make_distractors.py  robustness sets (insert an off-topic sentence)
+  get_adversarial.py   download Adversarial SQuAD (AddSent / AddOneSent) as JSONL
+  robustness_report.py score drop + distractor capture rate across robustness sets
+  error_analysis.py    error types, gate quality, per-type/length/confidence breakdowns, examples
 cluster/
-  setup_env.sh  conda.sh  check_gpu.sh  job.sbatch  pipeline.sh   (NUS SoC Slurm cluster)
+  setup_env.sh  conda.sh  check_gpu.sh  job.sbatch  pipeline.sh  robustness.sh   (NUS SoC Slurm cluster)
 tests/test_core.py
 ```
 
@@ -153,11 +158,37 @@ Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
 | Without hard negatives | `tag=easy` / `tag=random`, `mode=gated` |
 | Upper bound | `mode=oracle_gated` |
 | Score feature removed | retrain with `--no_score` |
+| Soft labels (partial credit for near-miss spans) | retrain with `--soft_labels`; see `negatives.csv` in the error analysis for why |
 | Gating threshold | `results/gating/gating_sweep.csv`, or rerun `run_system.py` with other `--gate_frac` |
 
 `metrics_<tag>.json` also has per-question-type EM/F1 and wrong→right / right→wrong flip counts.
 
 ## Robustness (distractors)
+
+After `pipeline.sh` has finished, everything below runs as one job:
+
+```bash
+python scripts/get_adversarial.py                        # once, on xlogin (needs internet)
+sbatch cluster/job.sbatch bash cluster/robustness.sh     # 6 distractor sets + AddSent/AddOneSent
+```
+
+This builds {random, overlap} × {start, random, end} distractor versions of dev, generates candidates for each set and for Adversarial SQuAD, runs every reranker with τ from the clean heldout set, and writes `results/robustness/robustness_summary.{md,csv}` and `robustness_drop.png`. These report the EM/F1 drop compared with the same questions on clean dev, how many questions get sent to the reranker, and the **capture rate**: the share of predictions that land inside the inserted sentence. Adversarial SQuAD uses the official worst-case-per-question protocol. The script header also has a local smoke-test command.
+
+Error analysis on clean dev (error types, whether the gate catches errors the reranker can fix, breakdowns by question type, answer length and confidence, and examples):
+
+```bash
+python scripts/error_analysis.py --candidates data/candidates/dev.jsonl --results_dir results/dev \
+  --tag hard --tau_from data/candidates/heldout.jsonl --gate_frac 0.2 \
+  --train_candidates data/candidates/fold0.jsonl data/candidates/fold1.jsonl   # → results/error_analysis/hard/
+```
+
+To check whether the confidence gate notices answers taken from the inserted sentence, pass the τ from `results/robustness/runs.csv`:
+
+```bash
+python scripts/robustness_report.py --tau 0.16746135687313898    # → results/robustness/gate_vs_capture.md
+```
+
+Individual steps, if you need them:
 
 ```bash
 python scripts/make_distractors.py --split dev --mode overlap --position random \

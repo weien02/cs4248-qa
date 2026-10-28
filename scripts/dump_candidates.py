@@ -3,7 +3,8 @@
 Output: one JSON line per question
     {id, title, question, context, answers, answer_starts,
      candidates: [{text, start, end, score, start_logit, end_logit}, ...],   # sorted by score
-     gold_rank}   # index of first candidate exactly matching gold, -1 if none
+     gold_rank,   # index of first candidate exactly matching gold, -1 if none
+     distractor, distractor_pos}   # only when the split came from make_distractors.py
 
 Example
 -------
@@ -25,6 +26,8 @@ from qa.baseline import candidates_for_split  # noqa: E402
 from qa.data import load_split, write_jsonl  # noqa: E402
 from qa.metrics import exact_match, max_over_gold, score_predictions  # noqa: E402
 from qa.utils import get_device  # noqa: E402
+
+PASSTHROUGH = ("distractor", "distractor_pos")
 
 
 def main():
@@ -59,11 +62,15 @@ def main():
         gold_rank = next((i for i, c in enumerate(cs) if max_over_gold(exact_match, c["text"], golds)), -1)
         for k in in_topk:
             in_topk[k] += int(0 <= gold_rank < k)
-        rows.append({
+        row = {
             "id": e["id"], "title": e["title"], "question": e["question"], "context": e["context"],
             "answers": golds, "answer_starts": e["answers"]["answer_start"],
             "candidates": cs, "gold_rank": gold_rank,
-        })
+        }
+        for key in PASSTHROUGH:  # e.g. distractor metadata from make_distractors.py
+            if key in e:
+                row[key] = e[key]
+        rows.append(row)
     write_jsonl(args.output, rows)
 
     preds = {r["id"]: r["candidates"][0]["text"] for r in rows}

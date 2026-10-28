@@ -14,6 +14,7 @@ python scripts/train_baseline.py --model roberta-base --train_split train_main \
 from __future__ import annotations
 
 import argparse
+import inspect
 import sys
 from pathlib import Path
 
@@ -73,13 +74,17 @@ def main():
     )
     print(f"{len(train_ex)} train examples -> {len(train_feats)} features")
 
+    # transformers 5.x removed warmup_ratio; a float warmup_steps < 1 is now read as a ratio
+    warmup = ({"warmup_ratio": args.warmup_ratio}
+              if "warmup_ratio" in inspect.signature(TrainingArguments).parameters
+              else {"warmup_steps": args.warmup_ratio})
     targs = TrainingArguments(
         output_dir=str(out / "checkpoints"),
         per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum,
         learning_rate=args.lr,
         weight_decay=args.weight_decay,
-        warmup_ratio=args.warmup_ratio,
+        **warmup,
         num_train_epochs=args.epochs,
         bf16=args.bf16,
         fp16=args.fp16,

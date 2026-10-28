@@ -1,0 +1,5 @@
+source,negatives,n,matches_other_ref,contains_gold,inside_gold,partial_overlap,no_overlap
+dev.jsonl (first ref only),hard (top-k),32470,13.1,56.3,22.7,3.4,4.5
+dev.jsonl (first ref only),easy (rank k+),139409,1.7,60.7,19.2,8.6,9.8
+fold0.jsonl+fold1.jsonl,hard (top-k),253747,0.0,59.9,31.2,3.3,5.5
+fold0.jsonl+fold1.jsonl,easy (rank k+),1087054,0.0,59.4,21.0,8.4,11.2
