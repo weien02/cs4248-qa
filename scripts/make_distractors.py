@@ -106,14 +106,31 @@ def main():
         sent = pool[choice][1]
 
         ctx = ex["context"]
-        bounds = [0] + [e for _, e in sentence_spans(ctx)]
+        # Some official SQuAD annotations have a slightly incorrect
+        # answer_start. Realign them before modifying the context.
+        answer_texts = ex["answers"]["text"]
+        answer_starts = []
+        for raw_start, text in zip(ex["answers"]["answer_start"], answer_texts):
+            if ctx[raw_start:raw_start + len(text)] == text:
+                answer_starts.append(raw_start)
+                continue
+            matches = [m.start() for m in re.finditer(re.escape(text), ctx)]
+            if not matches:
+                raise ValueError(f"Cannot align answer {text!r} for {ex['id']}")
+            answer_starts.append(min(matches, key=lambda pos: abs(pos - raw_start)))
+
+        # Never insert a distractor inside a gold answer. A few gold spans
+        # include punctuation at what otherwise looks like a sentence boundary.
+        answers = list(zip(answer_starts, answer_texts))
+        bounds = [b for b in [0] + [e for _, e in sentence_spans(ctx)]
+                  if not any(s < b < s + len(t) for s, t in answers)]
         at = {"end": len(ctx), "start": 0, "random": rng.choice(bounds)}[args.position]
         if at == 0:
             new_ctx, shift = sent + " " + ctx, len(sent) + 1
         else:
             new_ctx, shift = ctx[:at] + " " + sent + ctx[at:], len(sent) + 1
-        starts = [s + shift if s >= at else s for s in ex["answers"]["answer_start"]]
-        for t, s in zip(ex["answers"]["text"], starts):
+        starts = [s + shift if s >= at else s for s in answer_starts]
+        for t, s in zip(answer_texts, starts):
             assert new_ctx[s:s + len(t)] == t, (ex["id"], t)
 
         out_rows.append({

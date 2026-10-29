@@ -37,7 +37,12 @@ def main():
     from datasets import load_dataset
 
     for cfg, name in CONFIGS.items():
-        ds = load_dataset("parquet", data_files=HF_PARQUET.format(cfg=cfg), split="train")
+        ds = load_dataset(
+            "parquet",
+            data_files=HF_PARQUET.format(cfg=cfg),
+            split="train",
+            keep_in_memory=True,
+        )
         rows = [{"id": r["id"], "title": r["title"], "context": r["context"], "question": r["question"],
                  "answers": {"text": r["answers"]["text"],
                              "answer_start": [int(s) for s in r["answers"]["answer_start"]]}}
