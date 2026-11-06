@@ -184,6 +184,35 @@ Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
 
 `metrics_<tag>.json` also has per-question-type EM/F1 and wrong→right / right→wrong flip counts.
 
+### Actual-reranker gate sweep and paired bootstrap
+
+The original `gating_analysis.py` curve measures the oracle/candidate-recall
+ceiling. Once `run_system.py` has saved one reranker choice per dev question,
+evaluate the actual reranker at 5/10/20/30/50% target gate fractions. Every
+threshold is selected from heldout confidence, while EM/F1 is measured on dev:
+
+```bash
+python scripts/reranker_gating_sweep.py --candidates data/candidates/dev.jsonl \
+  --tau_from data/candidates/heldout.jsonl \
+  --reranker_choices results/dev/reranker_choice_hard.json \
+  --tag hard --out_dir results/dev
+```
+
+Test the proposed hard-gated system against the baseline with paired bootstrap
+resampling over the same questions (10,000 replicates by default):
+
+```bash
+python scripts/paired_bootstrap.py --candidates data/candidates/dev.jsonl \
+  --predictions_a results/dev/predictions_hard_baseline.json --name_a baseline \
+  --predictions_b results/dev/predictions_hard_gated.json --name_b hard_gated \
+  --tag hard --out_dir results/dev
+```
+
+Outputs are `reranker_gating_sweep_<tag>.{csv,json,png}` and
+`paired_bootstrap_<tag>.{csv,json}`. The full cluster pipeline runs both
+evaluations for hard, easy and random rerankers. The same commands can be run
+with `--tag hardsoft` and its saved prediction/choice files.
+
 ## Robustness (distractors)
 
 After `pipeline.sh` has finished, everything below runs as one job:

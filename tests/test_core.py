@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from qa.confidence import confidence  # noqa: E402
 from qa.data import _squad_rows  # noqa: E402
+from qa.evaluation import actual_reranker_sweep, paired_bootstrap  # noqa: E402
 from qa.features import extract_candidates  # noqa: E402
 from qa.metrics import f1, normalize_answer, question_type, score_predictions  # noqa: E402
 from qa.text import marked_sentence, sentence_spans  # noqa: E402
@@ -118,3 +119,41 @@ def test_reranker_soft_targets():
     onehot = torch.tensor([[0.0, 1.0, 0.0, 0.0]])
     soft = -(onehot * F.log_softmax(logits, -1).masked_fill(~mask, 0.0)).sum(-1).mean()
     assert torch.isfinite(soft) and torch.isclose(soft, F.cross_entropy(logits, torch.tensor([1])))
+def test_paired_bootstrap_is_paired_and_reproducible():
+    golds = {"a": ["alpha"], "b": ["beta"], "c": ["gamma"], "d": ["delta"]}
+    system_a = {"a": "alpha", "b": "wrong", "c": "gamma", "d": "wrong"}
+    system_b = {qid: answers[0] for qid, answers in golds.items()}
+    first = paired_bootstrap(system_a, system_b, golds, n_samples=500, seed=7)
+    second = paired_bootstrap(system_a, system_b, golds, n_samples=500, seed=7)
+    assert first == second
+    assert first["metrics"]["exact_match"]["system_a"] == 50.0
+    assert first["metrics"]["exact_match"]["system_b"] == 100.0
+    assert first["metrics"]["exact_match"]["difference"] == 50.0
+
+
+def test_actual_reranker_sweep_uses_heldout_threshold():
+    def row(qid, first, second, gold, margin):
+        return {
+            "id": qid,
+            "answers": [gold],
+            "gold_rank": 1 if second == gold else 0,
+            "candidates": [
+                {"text": first, "score": margin},
+                {"text": second, "score": 0.0},
+            ],
+        }
+
+    rows = [
+        row("a", "wrong-a", "alpha", "alpha", 0.0),
+        row("b", "wrong-b", "beta", "beta", 0.2),
+        row("c", "gamma", "wrong-c", "gamma", 2.0),
+        row("d", "delta", "wrong-d", "delta", 4.0),
+    ]
+    choices = {"a": "alpha", "b": "beta", "c": "wrong-c", "d": "wrong-d"}
+    table = actual_reranker_sweep(rows, rows, choices, [0.5], k=2)
+    result = table[0]
+    assert result["actual_gate_pct"] == 50.0
+    assert result["baseline_em"] == 50.0
+    assert result["gated_em"] == 100.0
+    assert result["wrong_to_right"] == 2
+    assert result["right_to_wrong"] == 0

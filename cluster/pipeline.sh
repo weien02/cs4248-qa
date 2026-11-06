@@ -49,7 +49,13 @@ for NEG in hard easy random; do
         --train_candidates $C/fold0.jsonl $C/fold1.jsonl --val_candidates $C/heldout.jsonl \
         --encoder $RERANK_ENC --neg_mode $NEG --k $K $PREC --output_dir out/reranker-$NEG && \
         python scripts/run_system.py --candidates $C/dev.jsonl --reranker out/reranker-$NEG/best \
-        --tau_from $C/heldout.jsonl --gate_frac $GATE_FRAC --k $K --tag $NEG --out_dir results/dev")
+        --tau_from $C/heldout.jsonl --gate_frac $GATE_FRAC --k $K --tag $NEG --out_dir results/dev && \
+        python scripts/reranker_gating_sweep.py --candidates $C/dev.jsonl --tau_from $C/heldout.jsonl \
+        --reranker_choices results/dev/reranker_choice_$NEG.json --k $K --tag $NEG --out_dir results/dev && \
+        python scripts/paired_bootstrap.py --candidates $C/dev.jsonl \
+        --predictions_a results/dev/predictions_${NEG}_baseline.json --name_a baseline \
+        --predictions_b results/dev/predictions_${NEG}_gated.json --name_b ${NEG}_gated \
+        --tag $NEG --out_dir results/dev")
   echo "reranker-$NEG: $JR"
 done
 

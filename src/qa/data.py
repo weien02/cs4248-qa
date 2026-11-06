@@ -31,7 +31,7 @@ SPLIT_NAMES = ("train", "train_main", "heldout", "fold0", "fold1", "dev")
 def _squad_rows(path: str | Path) -> list[dict]:
     """Flatten an original SQuAD v1.1 JSON file into one row per question."""
     path = Path(path)
-    payload = json.loads(path.read_text())
+    payload = json.loads(path.read_text(encoding="utf-8"))
     if "data" not in payload:
         raise ValueError(f"{path} is not an original SQuAD JSON file (missing 'data')")
 
@@ -56,7 +56,7 @@ def _squad_rows(path: str | Path) -> list[dict]:
 
 
 def _is_squad_json(path: str | Path) -> bool:
-    with Path(path).open() as f:
+    with Path(path).open(encoding="utf-8") as f:
         head = f.read(4096).lstrip()
     return head.startswith("{") and '"data"' in head and '"paragraphs"' in head
 
@@ -117,7 +117,7 @@ def load_split(name: str, max_samples: int | None = None):
 def write_jsonl(path: str | Path, rows) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as f:
+    with path.open("w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
@@ -128,5 +128,5 @@ def read_jsonl(path: str | Path) -> list[dict]:
     if not path.exists() and path.with_name(path.name + ".gz").exists():
         path = path.with_name(path.name + ".gz")
     opener = gzip.open if path.suffix == ".gz" else open
-    with opener(path, "rt") as f:
+    with opener(path, "rt", encoding="utf-8") as f:
         return [json.loads(line) for line in f if line.strip()]
