@@ -1,10 +1,13 @@
 # large / generated
 out/
-data/
 logs/
 hf_cache/
-results/**/predictions_*.json
-results/**/reranker_choice_*.json
+# data/: only the baseline's candidate files are committed (fold files gzipped:
+# raw they exceed GitHub's 100 MB limit; read_jsonl reads foo.jsonl.gz for foo.jsonl)
+data/*
+!data/candidates/
+data/candidates/debug_*
+data/candidates/fold*.jsonl
 *.pt
 *.bin
 *.safetensors
