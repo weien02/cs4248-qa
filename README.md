@@ -63,6 +63,27 @@ pytest -q          # model-free unit tests
 
 Apple GPU (MPS) is used automatically.
 
+## Trained models and data (no retraining needed)
+
+- **Candidates and predictions are in git.** `data/candidates/` holds the roberta-base baseline's top-20 spans for heldout, dev, fold0/fold1 (gzipped; read transparently) and every robustness set. `results/**/predictions_*.json` holds every system's per-question answers. `error_analysis.py` and `robustness_report.py` run straight from a fresh clone.
+- **Model weights are on Google Drive** (about 460 MB each, too big for git): [cs4248-qa-weights](https://drive.google.com/drive/folders/18jQbu9Ix0yMzD83iqvMhxqr4o0hG1k1T). Download the archives you need into the repo root and unpack them into `out/`:
+
+  ```bash
+  mkdir -p out && for f in *.tar.gz; do tar -xzf "$f" -C out; done
+  # → out/baseline-roberta-base/final, out/reranker-{hard,easy,random,hardsoft}/best
+  ```
+
+  | Archive | Contents |
+  |---|---|
+  | `baseline-roberta-base.tar.gz` | span baseline (`final/`), its dev metrics and run config |
+  | `reranker-hard.tar.gz` | **final system's reranker** (`best/`), train log, run config |
+  | `reranker-easy.tar.gz` | easy-negative ablation |
+  | `reranker-random.tar.gz` | random-negative ablation |
+  | `reranker-hardsoft.tar.gz` | soft-label ablation |
+
+  Verify downloads against `models/SHA256SUMS` in this repo: `shasum -a 256 -c models/SHA256SUMS`.
+- **Running the system on new data** needs only the baseline and one reranker: `dump_candidates.py --model_dir out/baseline-roberta-base/final`, then `run_system.py --reranker out/reranker-hard/best`.
+
 ## Smoke test on Mac (~minutes)
 
 ```bash

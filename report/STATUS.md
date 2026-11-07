@@ -4,8 +4,8 @@ Read this first after pulling. Results and their interpretation: `report/robustn
 
 ## Branches
 
-- **`zilin`**: everything below. It includes `edbert-dev` (version pins, reranker crash fix), so it is a superset of both branches.
-- `main` doesn't have any of this yet. Next step: open a PR from `zilin` into `main`.
+- **`main`** has everything below (PR #2 merged `zilin`, which included `edbert-dev`).
+- **`zilin-artifacts`** (open PR): adds candidates, per-question predictions and the model-weight download instructions.
 
 ## What has been run (SQuAD v1.1, roberta-base, NUS SoC cluster, one seed)
 
@@ -19,7 +19,11 @@ Read this first after pulling. Results and their interpretation: `report/robustn
 | Robustness: 6 distractor sets + AddSent / AddOneSent | `cluster/robustness.sh` | `results/robustness/` |
 | Error analysis (hard, easy, random) | `scripts/error_analysis.py` (CPU) | `results/error_analysis/` |
 
-Model checkpoints, candidate files and per-question prediction files are not in git (too large); they live in `~/cs4248-qa` on the cluster account `gaozilin`. Everything in `results/` except `predictions_*` / `reranker_choice_*` is committed.
+**Everything needed to analyse or rerun the system is shared, so nobody needs to retrain:**
+- **git:** candidate files (`data/candidates/`; fold files gzipped) and every per-question prediction (`results/`).
+- **Google Drive:** model weights, about 460 MB each ([cs4248-qa-weights](https://drive.google.com/drive/folders/18jQbu9Ix0yMzD83iqvMhxqr4o0hG1k1T); unpacking steps in the README, "Trained models and data").
+
+The cross-fitted cf0/cf1 models are not shared; their only output, the fold candidates, is in git.
 
 ## Headline results (dev)
 
@@ -44,7 +48,7 @@ Full analysis: `report/robustness_error_analysis.md`.
 
 Suggested owners follow the proposal's work breakdown.
 
-1. **Merge into `main`** (Wei En): open a PR `zilin` → `main`.
+1. **Merge `zilin-artifacts` into `main`** (Wei En).
 2. **Significance / seeds** (Wei En): all gains are from one seed. Either rerun the baseline and hard reranker with 2 more `--seed` values, or run a paired bootstrap on `results/dev/predictions_*` (no GPU needed). This is required before claiming +0.96 EM, and especially hard > easy.
 3. **Missing ablations from the proposal:**
    - (Edbert) `--no_score` reranker: tests whether easy/random negatives exploit the baseline-score shortcut. One `train_reranker.py` job, ~30 min.
