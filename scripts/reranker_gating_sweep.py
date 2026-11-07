@@ -35,6 +35,7 @@ def main():
     p.add_argument("--kind", choices=MARGIN_KINDS, default="prob_margin")
     p.add_argument("--tag", default="hard")
     p.add_argument("--out_dir", default="results/dev")
+    p.add_argument("--no_plot", action="store_true", help="write CSV/JSON only")
     args = p.parse_args()
 
     eval_rows = read_jsonl(args.candidates)
@@ -67,6 +68,10 @@ def main():
             f"{row['delta_em']:+7.2f} {row['delta_f1']:+7.2f} "
             f"{row['wrong_to_right']:7d} {row['right_to_wrong']:7d}"
         )
+
+    if args.no_plot:
+        print(f"Saved {csv_path} and {json_path}")
+        return
 
     try:
         import matplotlib
