@@ -13,6 +13,7 @@ flattened the same way as the official train/dev files.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import math
 import random
@@ -122,5 +123,10 @@ def write_jsonl(path: str | Path, rows) -> None:
 
 
 def read_jsonl(path: str | Path) -> list[dict]:
-    with Path(path).open() as f:
+    """Read a JSONL file; foo.jsonl falls back to foo.jsonl.gz (how large files are committed)."""
+    path = Path(path)
+    if not path.exists() and path.with_name(path.name + ".gz").exists():
+        path = path.with_name(path.name + ".gz")
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt") as f:
         return [json.loads(line) for line in f if line.strip()]
