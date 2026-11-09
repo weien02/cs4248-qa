@@ -1,0 +1,22 @@
+{
+  "model": "distilbert-base-uncased",
+  "train_split": "train_main",
+  "eval_split": "dev",
+  "output_dir": "out/model_comparison/distilbert/baseline",
+  "max_length": 384,
+  "stride": 128,
+  "epochs": 2.0,
+  "batch_size": 32,
+  "grad_accum": 1,
+  "lr": 3e-05,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.1,
+  "bf16": true,
+  "fp16": false,
+  "save_steps": 1000,
+  "max_train_samples": null,
+  "max_eval_samples": null,
+  "num_workers": 2,
+  "seed": 42,
+  "_argv": "scripts/train_baseline.py --model distilbert-base-uncased --train_split train_main --epochs 2 --batch_size 32 --grad_accum 1 --seed 42 --bf16 --output_dir out/model_comparison/distilbert/baseline"
+}

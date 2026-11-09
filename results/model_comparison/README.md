@@ -37,8 +37,8 @@ relative gains when first-stage candidate ordering is weaker.
 - `comparison.csv` contains the normalized cross-model table and 95% paired
   bootstrap intervals.
 - Each model folder contains `ablations.csv`, the actual-reranker threshold
-  sweep, and paired bootstrap results.
-- The canonical RoBERTa predictions remain in `results/dev/` to avoid
-  duplicating several megabytes of already tracked artifacts.
-- DistilBERT includes the transferred per-question predictions and plots.
-- Only the three core CSV exports were transferred for TinyBERT.
+  sweep, paired bootstrap results, per-question predictions, and reranker
+  choices. Available gating-analysis plots and CSVs are included as well.
+- The RoBERTa files are copies of the canonical artifacts in `results/dev/`.
+- DistilBERT also includes the standalone baseline metrics, predictions, and
+  run configuration exported from its training directory.
