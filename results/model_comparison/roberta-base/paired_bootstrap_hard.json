@@ -1,0 +1,30 @@
+{
+  "n": 10570,
+  "n_samples": 10000,
+  "seed": 42,
+  "confidence_level": 0.95,
+  "metrics": {
+    "exact_match": {
+      "system_a": 85.7899716177862,
+      "system_b": 86.75496688741721,
+      "difference": 0.9649952696310313,
+      "ci_low": 0.586565752128666,
+      "ci_high": 1.3623462630085146,
+      "standard_error": 0.19817096018696675,
+      "p_one_sided_b_not_better": 9.999000099990002e-05,
+      "p_two_sided": 0.00019998000199980003
+    },
+    "f1": {
+      "system_a": 92.08322436410107,
+      "system_b": 92.29141313214339,
+      "difference": 0.20818876804231598,
+      "ci_low": -0.013709398524054981,
+      "ci_high": 0.4347289982995468,
+      "standard_error": 0.11393922843478509,
+      "p_one_sided_b_not_better": 0.032996700329967,
+      "p_two_sided": 0.065993400659934
+    }
+  },
+  "system_a_name": "baseline",
+  "system_b_name": "hard_gated"
+}
