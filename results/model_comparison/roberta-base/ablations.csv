@@ -1,0 +1,5 @@
+tag,candidates,mode,k,kind,tau,pct_gated,EM,F1,wrong_to_right,right_to_wrong
+hard,dev.jsonl,baseline,5,prob_margin,0.16746135687313898,0.0,85.79,92.08,0.0,0.0
+hard,dev.jsonl,oracle_gated,5,prob_margin,0.16746135687313898,18.6,90.69,94.19,518.0,0.0
+hard,dev.jsonl,rerank_all,5,prob_margin,0.16746135687313898,100.0,85.44,91.16,462.0,499.0
+hard,dev.jsonl,gated,5,prob_margin,0.16746135687313898,18.6,86.75,92.29,274.0,172.0
