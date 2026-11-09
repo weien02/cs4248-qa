@@ -159,13 +159,47 @@ tail -f logs/slurm/<job-name>-<job-id>.out   # Ctrl+C stops tail, not the job
 3. `dump`: heldout + dev candidates, gating sweep (`results/gating/`)
 4. `rr-hard`, `rr-easy`, `rr-random`: rerankers + system eval on dev
 
-Knobs: `MODEL=deberta-v3-base`, `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4).
+Knobs: `K=5`, `GATE_FRAC=0.2`, `PREC=--fp16` (V100/T4). Use the
+namespaced comparison pipeline below for a different baseline model.
 
 - Each job requests 1× `a100-40` for up to 3 h (see `cluster/job.sbatch`). Change the GPU type or time with `sbatch --gpus=... --time=...`. Check the job priority docs for current limits.
 - Training auto-resumes from the last checkpoint if a job is resubmitted.
 - Jobs run with `HF_HUB_OFFLINE=1`, using the cache from step 3.
 - Run any single step yourself: `sbatch cluster/job.sbatch python scripts/<script>.py ...`
 - Cancel a job: `scancel <job-id>`. Copy results back to your Mac: `rsync -avz -e "ssh -J <soc_username>@stujump.comp.nus.edu.sg" <soc_username>@xlogin.comp.nus.edu.sg:~/cs4248-qa/results ./`
+
+### Alternative baseline comparison
+
+Use `model_comparison.sh` rather than changing `MODEL` in the main pipeline.
+It namespaces all checkpoints, candidates, and results so the canonical
+RoBERTa artifacts cannot be overwritten. Cache a model once from an
+internet-enabled compute node:
+
+```bash
+srun --gpus=a100-40 --mem=16G --time=00:20:00 bash -lc \
+  'source cluster/conda.sh; unset HF_HUB_OFFLINE; \
+   python scripts/cache_models.py microsoft/deberta-v3-base'
+```
+
+Then submit the full DeBERTa-v3-base comparison from xlogin. Batch 16 with two
+accumulation steps preserves the baseline's effective batch size of 32:
+
+```bash
+MODEL=microsoft/deberta-v3-base EXPERIMENT=deberta-v3-base \
+  BASE_BATCH=16 BASE_GRAD_ACCUM=2 bash cluster/model_comparison.sh
+```
+
+The script trains the main and two cross-fitted baselines, generates isolated
+candidates, trains the hard-negative RoBERTa reranker, and runs the system
+evaluation, actual-reranker threshold sweep, and paired bootstrap test. Outputs
+land in `results/model_comparison/deberta-v3-base/`.
+
+A smaller-baseline follow-up can use:
+
+```bash
+MODEL=distilbert/distilroberta-base EXPERIMENT=distilroberta \
+  bash cluster/model_comparison.sh
+```
 
 ## Ablations
 

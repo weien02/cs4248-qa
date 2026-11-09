@@ -1,7 +1,7 @@
 #!/bin/bash
 # Submit the whole experiment as a chain of Slurm jobs (each waits for the ones it needs).
 #   bash cluster/pipeline.sh                   # roberta-base everything
-#   MODEL=deberta-v3-base bash cluster/pipeline.sh
+# For another baseline, use cluster/model_comparison.sh so canonical artifacts are not overwritten.
 # Run from the repo root on xlogin. Watch with: squeue --me ; tail -f logs/slurm/*.out
 set -euo pipefail
 cd "$(dirname "$0")/.."
